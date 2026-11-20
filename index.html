@@ -1,0 +1,105 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#14102a"><link rel="manifest" href="manifest.json"><link rel="icon" href="icon-192.png"><title>Chromatix</title>
+<style>
+:root{--bg:#14102a;--p:#1f1940;--a:#7c5cff;--b:#27e0c8;--t:#eee;--m:#9a93c4}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;background:var(--bg);color:var(--t);font:14px system-ui,sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{display:flex;align-items:center;gap:8px;padding:4px 10px;background:var(--p)}
+header img{height:26px;border-radius:6px}header b{flex:1;font-size:16px;letter-spacing:.5px}
+button,select,input[type=text]{font:inherit;color:var(--t);background:#2e2658;border:0;border-radius:8px;padding:7px 11px}
+button.on,button.ac{background:var(--a)}button:active{filter:brightness(1.3)}
+.v{display:none;flex:1;min-height:0;flex-direction:column;padding:8px;gap:8px}.v.on{display:flex}
+.g{flex:1;min-height:0;display:grid;grid-template-columns:1.3fr 1fr;gap:8px}
+.l{display:flex;flex-direction:column;gap:6px;min-height:0}
+.r,.sc{overflow:auto;background:var(--p);border-radius:10px;padding:8px}
+#wf{flex:1;min-height:0;width:100%;background:var(--p);border-radius:10px}
+.row{display:flex;gap:6px;flex-wrap:wrap}.row>*{flex:1}
+.pr{display:grid;grid-template-columns:130px 1fr 50px;align-items:center;gap:6px;margin:3px 0;font-size:12px}
+.pr input[type=range]{width:100%;accent-color:var(--b)}.pr i{color:var(--b);font-style:normal;text-align:right}
+#kb{position:relative;height:36%;display:flex;gap:1px}
+.k{touch-action:none;position:relative}
+.w{flex:1;background:#f2f0ff;border-radius:0 0 6px 6px;color:#555;font-size:10px;display:flex;align-items:flex-end;justify-content:center}
+.b{position:absolute;top:0;height:62%;background:#111;border-radius:0 0 4px 4px;z-index:2}
+.k.ac2{background:var(--b)}.k.rt{outline:2px solid var(--a);outline-offset:-2px}
+.card{display:flex;align-items:center;gap:6px;background:var(--p);padding:8px;border-radius:10px;margin-bottom:6px}
+.card span{flex:1}.card small{color:var(--m);display:block}
+#pt{position:fixed;inset:0;background:var(--bg);z-index:9;display:none;align-items:center;justify-content:center;font-size:20px;text-align:center}
+@media(orientation:portrait){#pt{display:flex}}
+</style></head><body>
+<div id="pt">📱↻<br>Gire o celular<br>para a horizontal</div>
+<header><img src="icon-192.png"><b>Chromatix</b><button data-v="pj" class="on">Projetos</button><button data-v="ed">Editor</button><button data-v="st">Config</button></header>
+<section id="pj" class="v on"><div class="row" style="flex:0"><button id="nw" class="ac">＋ Novo projeto</button></div><div class="sc" id="ls" style="flex:1"></div></section>
+<section id="ed" class="v"><div class="g"><div class="l"><input type="text" id="nm"><canvas id="wf"></canvas>
+<div class="row"><button id="imp">📂 Importar</button><button id="rec">🎙 Gravar</button><button id="pl">▶ Ouvir</button><button id="ex" class="ac">⬇ .sf2</button></div><input type="file" id="fi" accept="audio/*" hidden></div>
+<div class="r" id="pr"></div></div><div id="kb"></div></section>
+<section id="st" class="v"><div class="sc" id="sc" style="flex:1"></div></section>
+<script>
+const $=s=>document.querySelector(s),NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+let S=Object.assign({o:3,n:3,fl:1,vol:.8,rel:.25},JSON.parse(localStorage.cs||'{}')),P=null,ctx,cb=null,V={},tm;
+const sv=()=>localStorage.cs=JSON.stringify(S),nt=m=>NN[m%12]+(Math.floor(m/12)-(S.fl?0:1)),AC=()=>ctx||(ctx=new AudioContext());
+const db=new Promise(r=>{const q=indexedDB.open('chromatix',1);q.onupgradeneeded=()=>q.result.createObjectStore('p',{keyPath:'id'});q.onsuccess=()=>r(q.result)});
+const tx=async(m,f)=>{const d=await db;return new Promise(r=>{const t=d.transaction('p',m),q=f(t.objectStore('p'));t.oncomplete=()=>r(q.result)})};
+const save=()=>{clearTimeout(tm);tm=setTimeout(()=>{P.mod=Date.now();tx('readwrite',s=>s.put(P))},400)};
+const seg=p=>{const n=p.pcm.length;return p.pcm.subarray(Math.floor(p.ts*n),Math.floor(p.te*n))};
+const mk=n=>({id:Date.now(),name:n,pcm:null,rate:44100,root:60,tune:0,ts:0,te:1,a:.005,d:.2,s:1,r:S.rel,vol:0,loop:false,ls:.3,le:.9});
+function go(v){document.querySelectorAll('.v').forEach(e=>e.classList.toggle('on',e.id==v));document.querySelectorAll('header button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));if(v=='pj')list();if(v=='ed'){if(!P)return go('pj');fill();kb();setTimeout(draw,50)}}
+document.querySelectorAll('header button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+async function list(){const a=(await tx('readonly',s=>s.getAll())).sort((x,y)=>y.mod-x.mod),el=$('#ls');el.innerHTML=a.length?'':'<p style="color:var(--m);padding:10px">Nenhum projeto ainda. Toque em “Novo projeto”.</p>';
+a.forEach(p=>{const d=document.createElement('div');d.className='card';d.innerHTML=`<span><b>${p.name.replace(/</g,'&lt;')}</b><small>${p.pcm?(p.pcm.length/p.rate).toFixed(2)+'s · raiz '+nt(p.root):'sem sample'}</small></span><button>Abrir</button><button>Duplicar</button><button>.sf2</button><button>🗑</button>`;
+const b=d.querySelectorAll('button');b[0].onclick=()=>{P=p;go('ed')};b[1].onclick=async()=>{const c=structuredClone(p);c.id=Date.now();c.name+=' (cópia)';c.mod=Date.now();await tx('readwrite',s=>s.put(c));list()};b[2].onclick=()=>exp(p);b[3].onclick=async()=>{if(confirm('Excluir "'+p.name+'"?')){await tx('readwrite',s=>s.delete(p.id));list()}};el.append(d)})}
+$('#nw').onclick=()=>{const n=prompt('Nome do projeto:','Meu Chromatic');if(n){P=mk(n);P.mod=Date.now();tx('readwrite',s=>s.put(P));go('ed')}};
+const PR=[['tune','Afinação fina (cents)',-99,99,1],['ts','Início do corte',0,1,.001],['te','Fim do corte',0,1,.001],['a','Ataque (s)',0,2,.001],['d','Decaimento (s)',0,3,.01],['s','Sustain',0,1,.01],['r','Release (s)',0,3,.01],['vol','Volume (dB)',-24,0,1],['ls','Início do loop',0,1,.001],['le','Fim do loop',0,1,.001]];
+const pr=$('#pr');pr.innerHTML='<div class="pr"><span>Nota raiz</span><select id="root"></select><i></i></div><div class="pr"><span>Loop</span><input type="checkbox" id="lp"><i></i></div>';
+for(let m=24;m<=96;m++)$('#root').add(new Option(nt(m)+' ('+m+')',m));
+PR.forEach(([k,l,mn,mx,st])=>{const d=document.createElement('div');d.className='pr';d.innerHTML=`<span>${l}</span><input type="range" id="p_${k}" min="${mn}" max="${mx}" step="${st}"><i id="v_${k}"></i>`;pr.append(d);
+d.querySelector('input').oninput=e=>{let v=+e.target.value;if(k=='ts')v=Math.min(v,P.te-.01);if(k=='te')v=Math.max(v,P.ts+.01);P[k]=v;cb=null;fill(1);draw();save()}});
+$('#root').onchange=e=>{P.root=+e.target.value;kb();save()};$('#lp').onchange=e=>{P.loop=e.target.checked;cb=null;draw();save()};
+$('#nm').onchange=e=>{P.name=e.target.value||'Sem nome';save()};
+function fill(s){PR.forEach(([k])=>{$('#p_'+k).value=P[k];$('#v_'+k).textContent=(+P[k]).toFixed(k=='tune'||k=='vol'?0:2)});if(!s){$('#root').value=P.root;$('#lp').checked=P.loop;$('#nm').value=P.name}}
+function draw(){const c=$('#wf'),x=c.getContext('2d'),w=c.width=c.clientWidth,h=c.height=c.clientHeight;x.clearRect(0,0,w,h);if(!P||!P.pcm){x.fillStyle='#9a93c4';x.font='14px sans-serif';x.fillText('Importe ou grave um sample',12,h/2);return}
+const d=P.pcm,k=d.length/w,st=Math.max(1,Math.floor(k/40));x.fillStyle='#27e0c8';for(let i=0;i<w;i++){let lo=0,hi=0;for(let j=Math.floor(i*k);j<(i+1)*k&&j<d.length;j+=st){const v=d[j];if(v<lo)lo=v;if(v>hi)hi=v}x.fillRect(i,h/2-hi/32768*h/2,1,Math.max(1,(hi-lo)/32768*h/2))}
+x.fillStyle='#14102acc';x.fillRect(0,0,P.ts*w,h);x.fillRect(P.te*w,0,w,h);
+if(P.loop){x.fillStyle='#7c5cff';[P.ls,P.le].forEach(f=>x.fillRect((P.ts+(P.te-P.ts)*f)*w,0,2,h))}}
+async function load(ab){try{const b=await AC().decodeAudioData(ab),n=b.length,o=new Float32Array(n);for(let c=0;c<b.numberOfChannels;c++){const f=b.getChannelData(c);for(let i=0;i<n;i++)o[i]+=f[i]/b.numberOfChannels}
+let pk=0;for(let i=0;i<n;i++)pk=Math.max(pk,Math.abs(o[i]));const g=pk?.95/pk:1,q=new Int16Array(n);for(let i=0;i<n;i++)q[i]=Math.round(o[i]*g*32767);
+P.pcm=q;P.rate=b.sampleRate;P.ts=0;P.te=1;cb=null;fill();draw();save()}catch(e){alert('Não consegui ler esse áudio: '+e.message)}}
+$('#imp').onclick=()=>$('#fi').click();$('#fi').onchange=async e=>{const f=e.target.files[0];if(f)load(await f.arrayBuffer());e.target.value=''};
+let mr;$('#rec').onclick=async()=>{if(mr&&mr.state=='recording')return mr.stop();try{const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}),ch=[];mr=new MediaRecorder(st);mr.ondataavailable=e=>ch.push(e.data);
+mr.onstop=async()=>{st.getTracks().forEach(t=>t.stop());$('#rec').textContent='🎙 Gravar';load(await new Blob(ch).arrayBuffer())};mr.start();$('#rec').textContent='⏹ Parar'}catch(e){alert('Microfone indisponível: '+e.message)}};
+function buf(){if(cb)return cb;const d=seg(P),b=AC().createBuffer(1,d.length,P.rate),f=b.getChannelData(0);for(let i=0;i<d.length;i++)f[i]=d[i]/32768;return cb=b}
+function on(m){if(!P||!P.pcm||V[m])return;const c=AC();c.resume();const b=buf(),s=c.createBufferSource(),g=c.createGain(),t=c.currentTime,v=S.vol*10**(P.vol/20);
+s.buffer=b;s.playbackRate.value=2**((m-P.root)/12+P.tune/1200);if(P.loop){s.loop=true;s.loopStart=P.ls*b.duration;s.loopEnd=P.le*b.duration}
+g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(v,t+P.a+.001);g.gain.linearRampToValueAtTime(v*P.s,t+P.a+.001+P.d);s.connect(g).connect(c.destination);s.start(t);V[m]={s,g};
+document.querySelector(`.k[data-m="${m}"]`)?.classList.add('ac2')}
+function off(m){const o=V[m];if(!o)return;delete V[m];const t=AC().currentTime;o.g.gain.cancelScheduledValues(t);o.g.gain.setValueAtTime(o.g.gain.value,t);o.g.gain.linearRampToValueAtTime(0,t+P.r+.01);o.s.stop(t+P.r+.05);document.querySelector(`.k[data-m="${m}"]`)?.classList.remove('ac2')}
+function kb(){const el=$('#kb');el.innerHTML='';const s=12*S.o,e=s+12*S.n,bl=[1,3,6,8,10],W=[];for(let m=s;m<=e;m++)if(!bl.includes(m%12))W.push(m);
+for(let m=s;m<=e;m++){const d=document.createElement('div'),b=bl.includes(m%12);d.className='k '+(b?'b':'w')+(m==P.root?' rt':'');d.dataset.m=m;
+if(b){const w=100/W.length;d.style.cssText=`left:${W.filter(x=>x<m).length*w-w*.3}%;width:${w*.6}%`}else if(m%12==0||m==P.root)d.textContent=nt(m);
+d.onpointerdown=e=>{e.preventDefault();d.setPointerCapture(e.pointerId);on(m)};['pointerup','pointercancel'].forEach(t=>d.addEventListener(t,()=>off(m)));el.append(d)}}
+$('#pl').onpointerdown=()=>on(P.root);$('#pl').onpointerup=()=>off(P.root);
+const tc=s=>Math.max(-12000,Math.round(1200*Math.log2(Math.max(s,.001))));
+function exp(p){if(!p.pcm)return alert('Esse projeto ainda não tem sample.');const d=seg(p),n=d.length,U=a=>a instanceof Uint8Array?a:Uint8Array.from(a),
+cat=(...a)=>{a=a.map(U);const o=new Uint8Array(a.reduce((s,x)=>s+x.length,0));let i=0;a.forEach(x=>{o.set(x,i);i+=x.length});return o},
+u16=v=>[v&255,(v>>8)&255],u32=v=>[v&255,(v>>8)&255,(v>>16)&255,(v>>>24)&255],str=(s,l)=>Array.from({length:l},(_,i)=>s.charCodeAt(i)&127||0),
+ck=(id,...x)=>{const b=cat(...x);return cat(str(id,4),u32(b.length),b,b.length%2?[0]:[])},ls=(id,...x)=>ck('LIST',str(id,4),...x),
+nm=p.name.replace(/[^\x20-\x7e]/g,'_').slice(0,19),z=n=>new Uint8Array(n),
+sus=p.s>=1?0:Math.min(1440,Math.round(-200*Math.log10(Math.max(p.s,.0001)))),
+G=[[43,127<<8],[34,tc(p.a)],[36,tc(p.d)],[37,sus],[38,tc(p.r)],[48,Math.round(-p.vol*10)],[52,Math.round(p.tune)],[54,p.loop?1:0],[58,p.root],[53,0]],
+sl=Math.max(0,Math.min(n-2,Math.floor(p.ls*n))),el=Math.max(sl+1,Math.min(n,Math.floor(p.le*n)));
+const pcm=new Uint8Array(d.buffer.slice(d.byteOffset,d.byteOffset+n*2));
+const sf=ck('RIFF',str('sfbk',4),ls('INFO',ck('ifil',u16(2),u16(1)),ck('isng',str('EMU8000',8)),ck('INAM',str(nm,20))),ls('sdta',ck('smpl',pcm,z(92))),
+ls('pdta',ck('phdr',str(nm,20),u16(0),u16(0),u16(0),u32(0),u32(0),u32(0),str('EOP',20),u16(0),u16(0),u16(1),u32(0),u32(0),u32(0)),ck('pbag',u16(0),u16(0),u16(1),u16(0)),ck('pmod',z(10)),ck('pgen',u16(41),u16(0),z(4)),
+ck('inst',str(nm,20),u16(0),str('EOI',20),u16(1)),ck('ibag',u16(0),u16(0),u16(G.length),u16(0)),ck('imod',z(10)),ck('igen',...G.map(([o,v])=>[...u16(o),...u16(v&65535)]),z(4)),
+ck('shdr',str(nm,20),u32(0),u32(n),u32(sl),u32(el),u32(p.rate),[p.root,0],u16(0),u16(1),str('EOS',20),z(26))));
+const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([sf],{type:'audio/x-soundfont'}));a.download=(nm.trim()||'chromatic').replace(/\s+/g,'_')+'.sf2';a.click()}
+$('#ex').onclick=()=>exp(P);
+function cfg(){const el=$('#sc');el.innerHTML=`<div class="pr"><span>Oitava inicial</span><select id="s1">${[1,2,3,4,5].map(i=>`<option ${i==S.o?'selected':''}>${i}</option>`)}</select><i></i></div>
+<div class="pr"><span>Nº de oitavas</span><select id="s2">${[1,2,3,4].map(i=>`<option ${i==S.n?'selected':''}>${i}</option>`)}</select><i></i></div>
+<div class="pr"><span>Nome das notas</span><select id="s3"><option value="1" ${S.fl?'selected':''}>FL Studio (C5 = 60)</option><option value="0" ${S.fl?'':'selected'}>Padrão (C4 = 60)</option></select><i></i></div>
+<div class="pr"><span>Volume do piano</span><input type="range" id="s4" min="0.1" max="1" step=".05" value="${S.vol}"><i></i></div>
+<div class="pr"><span>Release padrão (s)</span><input type="range" id="s5" min="0.01" max="2" step=".01" value="${S.rel}"><i></i></div>
+<p style="color:var(--m);margin-top:12px">Chromatix 1.0 · os projetos ficam salvos só neste aparelho.</p>`;
+const f=(i,k,c)=>$('#'+i).onchange=$('#'+i).oninput=e=>{S[k]=c(e.target.value);sv()};f('s1','o',Number);f('s2','n',Number);f('s3','fl',Number);f('s4','vol',Number);f('s5','rel',Number)}
+cfg();go('pj');addEventListener('resize',()=>P&&draw());
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js');
+</script></body></html>
