@@ -1,4 +1,4 @@
-# 🎹 Chromatix 0.2 (Kotlin + Jetpack Compose)
+# Chromatix 0.3 (Kotlin + Jetpack Compose)
 
 App Android (modo **horizontal**) para criar **Chromatics de FNF** e exportar em **.sf2**.
 
@@ -40,3 +40,14 @@ Depois abra o APK pelo gerenciador de arquivos e permita "instalar de fontes des
 ## Limitações
 - O SF2 muda a nota acelerando/desacelerando o sample, então o som fica natural só perto da raiz.
 - Todas as vogais compartilham raiz, afinação, envelope e loop (o corte é por vogal).
+
+## Novidades da 0.3
+- **Importar escala cromática e cortar**: ao importar um áudio, escolha cortar em vogais (A E I O, ou com U) ou em escala (uma nota por tecla). O editor de corte é no estilo BandLab: arraste as pontas roxas, toque para posicionar a ponta mais próxima, **pince para dar zoom**, arraste para rolar e use "próximo som" para o app achar o próximo trecho sozinho. "Aplicar" guarda o trecho e já pula para o próximo.
+- **Modo Escala**: cada tecla toca o sample cortado para ela; teclas sem sample usam a nota cortada mais próxima. No .sf2 vira uma zona por tecla.
+- **Reforço de graves** no piano (Config): sobe o volume das notas abaixo de G3 e limita picos, porque o alto-falante do celular quase não reproduz graves. Vale só para o piano do app, não muda o .sf2.
+- **Pasta própria**: os exports vão para `Documents/Chromatix`.
+- Emojis trocados por ícones.
+- O corte por barras de início/fim foi substituído pelo botão **Cortar**.
+
+## Sobre .dwp (DirectWave)
+O .dwp é um formato proprietário da Image-Line, sem especificação pública, então o app não gera .dwp. O caminho que funciona: abra o .sf2 no DirectWave (ele importa SoundFont2) e use "Save" ou "Save for FL Studio Mobile" para gerar o .dwp.

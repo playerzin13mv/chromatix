@@ -13,33 +13,48 @@ import org.json.JSONObject
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.abs
 
 val NN = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-/** Slots: 0..3 = A E I O, 4 = sample único, 5 = U (opcional). */
 fun letter(s: Int) = when (s) { 0 -> 'A'; 1 -> 'E'; 2 -> 'I'; 3 -> 'O'; 5 -> 'U'; else -> '?' }
 
 fun nt(m: Int) = NN[m % 12] + (m / 12 - (if (Cfg.fl) 0 else 1))
+const val SLOTS = 134 // 0..3 AEIO, 4 único, 5 U, 6+nota = escala
 fun <T> List<T>.with(i: Int, v: T): List<T> = toMutableList().also { it[i] = v }
 
 data class Proj(
-    val id: Long, val name: String, val vow: Boolean = true,
+    val id: Long, val name: String,
+    val mode: Int = 0, // 0 = vogais, 1 = sample único, 2 = escala (1 sample por tecla)
     val root: Int = 60, val tune: Int = 0,
     val a: Float = .005f, val d: Float = .2f, val s: Float = 1f, val r: Float = .25f,
     val vol: Float = 0f, val loop: Boolean = false, val ls: Float = .3f, val le: Float = .9f,
     val mod: Long = 0,
-    val rate: List<Int> = List(6) { 44100 },
-    val ts: List<Float> = List(6) { 0f },
-    val te: List<Float> = List(6) { 1f },
-    val pcm: List<ShortArray?> = List(6) { null },
+    val rate: List<Int> = List(SLOTS) { 44100 },
+    val ts: List<Float> = List(SLOTS) { 0f },
+    val te: List<Float> = List(SLOTS) { 1f },
+    val pcm: List<ShortArray?> = List(SLOTS) { null },
 ) {
+    val vow: Boolean get() = mode == 0
     val hasU: Boolean get() = pcm[5] != null
-    /** Ciclo do teclado: A E I O (e U, se foi dublado). A tecla k usa cycle[k % tamanho]. */
+    /** Ciclo do teclado nas vogais: A E I O (e U, se foi dublado). */
     val cycle: List<Int> get() = if (hasU) listOf(0, 1, 2, 3, 5) else listOf(0, 1, 2, 3)
-    fun slot(m: Int) = if (vow) cycle[m % cycle.size] else 4
-    val slots: List<Int> get() = if (vow) cycle else listOf(4)
-    private val required: List<Int> get() = if (vow) listOf(0, 1, 2, 3) else listOf(4)
-    val done: Boolean get() = required.all { pcm[it] != null }
-    fun missing() = required.filter { pcm[it] == null }.joinToString(", ") { if (it == 4) "sample" else letter(it).toString() }
+    /** Teclas (0..127) que têm sample próprio no modo escala. */
+    val keys: List<Int> get() = (0..127).filter { pcm[6 + it] != null }
+    /** Qual sample toca na tecla m (-1 = nenhum). Na escala, usa o sample da tecla mais próxima. */
+    fun slot(m: Int): Int = when (mode) {
+        0 -> cycle[m % cycle.size]
+        2 -> keys.minByOrNull { abs(it - m) }?.let { 6 + it } ?: -1
+        else -> 4
+    }
+    /** Nota em que o sample soa "como gravado". */
+    fun rootFor(s: Int) = if (s >= 6) s - 6 else root
+    val slots: List<Int> get() = when (mode) { 0 -> cycle; 2 -> keys.map { 6 + it }; else -> listOf(4) }
+    val done: Boolean get() = when (mode) { 0 -> (0..3).all { pcm[it] != null }; 2 -> keys.isNotEmpty(); else -> pcm[4] != null }
+    fun missing() = when (mode) {
+        0 -> (0..3).filter { pcm[it] == null }.joinToString(", ") { letter(it).toString() }
+        2 -> "nenhuma nota cortada"
+        else -> "sample"
+    }
 }
 
 object Cfg {
@@ -49,12 +64,13 @@ object Cfg {
     var fl by mutableStateOf(true)
     var vol by mutableStateOf(.8f)
     var rel by mutableStateOf(.25f)
+    var bass by mutableStateOf(6f)
     fun init(c: Context) {
         sp = c.getSharedPreferences("cfg", 0)
         o = sp.getInt("o", 3); n = sp.getInt("n", 3); fl = sp.getBoolean("fl", true)
-        vol = sp.getFloat("vol", .8f); rel = sp.getFloat("rel", .25f)
+        vol = sp.getFloat("vol", .8f); rel = sp.getFloat("rel", .25f); bass = sp.getFloat("bass", 6f)
     }
-    fun save() { sp.edit().putInt("o", o).putInt("n", n).putBoolean("fl", fl).putFloat("vol", vol).putFloat("rel", rel).apply() }
+    fun save() { sp.edit().putInt("o", o).putInt("n", n).putBoolean("fl", fl).putFloat("vol", vol).putFloat("rel", rel).putFloat("bass", bass).apply() }
 }
 
 object Store {
@@ -73,9 +89,13 @@ object Store {
         list.clear(); list.addAll(l)
     }
 
-    fun count(p: Proj) = (0..3).count { File(dir, "${p.id}_$it.pcm").exists() }
-    fun hasU(p: Proj) = File(dir, "${p.id}_5.pcm").exists()
-    fun full(p: Proj) = p.copy(pcm = List(6) { loadPcm(p.id, it) })
+    private fun has(p: Proj, s: Int) = File(dir, "${p.id}_$s.pcm").exists()
+    fun info(p: Proj) = when (p.mode) {
+        0 -> "Vogais ${(0..3).count { has(p, it) }}/4" + (if (has(p, 5)) " +U" else "")
+        2 -> "Escala · ${(6 until SLOTS).count { has(p, it) }} notas"
+        else -> "Sample único"
+    }
+    fun full(p: Proj) = p.copy(pcm = List(SLOTS) { loadPcm(p.id, it) })
     fun open(p: Proj) { cur = full(p) }
 
     fun create(name: String): Proj {
@@ -99,13 +119,13 @@ object Store {
     fun duplicate(p: Proj) {
         val id = System.currentTimeMillis()
         writeMeta(p.copy(id = id, name = p.name + " (cópia)"))
-        for (i in 0..5) { val f = File(dir, "${p.id}_$i.pcm"); if (f.exists()) f.copyTo(File(dir, "${id}_$i.pcm")) }
+        for (i in 0 until SLOTS) { val f = File(dir, "${p.id}_$i.pcm"); if (f.exists()) f.copyTo(File(dir, "${id}_$i.pcm")) }
         refresh()
     }
 
     fun delete(p: Proj) {
         File(dir, "${p.id}.json").delete()
-        for (i in 0..5) File(dir, "${p.id}_$i.pcm").delete()
+        for (i in 0 until SLOTS) File(dir, "${p.id}_$i.pcm").delete()
         if (cur?.id == p.id) cur = null
         refresh()
     }
@@ -123,7 +143,7 @@ object Store {
     }
 
     private fun writeMeta(p: Proj) {
-        val j = JSONObject().put("id", p.id).put("name", p.name).put("vow", p.vow).put("root", p.root).put("tune", p.tune)
+        val j = JSONObject().put("id", p.id).put("name", p.name).put("mode", p.mode).put("root", p.root).put("tune", p.tune)
             .put("a", p.a.toDouble()).put("d", p.d.toDouble()).put("s", p.s.toDouble()).put("r", p.r.toDouble())
             .put("vol", p.vol.toDouble()).put("loop", p.loop).put("ls", p.ls.toDouble()).put("le", p.le.toDouble())
             .put("mod", System.currentTimeMillis())
@@ -134,9 +154,9 @@ object Store {
     private fun parse(j: JSONObject): Proj {
         fun f(k: String, d: Double) = j.optDouble(k, d).toFloat()
         fun <T> arr(k: String, d: T, g: (JSONArray, Int) -> T): List<T> =
-            List(6) { i -> val a = j.optJSONArray(k); if (a != null && i < a.length()) g(a, i) else d }
+            List(SLOTS) { i -> val a = j.optJSONArray(k); if (a != null && i < a.length()) g(a, i) else d }
         return Proj(
-            j.getLong("id"), j.getString("name"), j.optBoolean("vow", true), j.optInt("root", 60), j.optInt("tune"),
+            j.getLong("id"), j.getString("name"), if (j.has("mode")) j.getInt("mode") else if (j.optBoolean("vow", true)) 0 else 1, j.optInt("root", 60), j.optInt("tune"),
             f("a", .005), f("d", .2), f("s", 1.0), f("r", .25), f("vol", 0.0), j.optBoolean("loop"), f("ls", .3), f("le", .9),
             j.optLong("mod"),
             arr("rate", 44100) { a, i -> a.getInt(i) },

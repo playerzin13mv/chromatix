@@ -38,10 +38,14 @@ object Sf2 {
 
         val name = nm(p)
         val sus = if (p.s >= 1f) 0 else minOf(1440, Math.round(-200 * log10(maxOf(p.s, .0001f).toDouble())).toInt())
-        val zones = if (p.vow) (0..127).map { Triple(it, it, it % sl.size) } else listOf(Triple(0, 127, 0))
+        val zones = when (p.mode) {
+            0 -> (0..127).map { Triple(it, it, it % sl.size) }
+            2 -> (0..127).map { Triple(it, it, sl.indexOf(p.slot(it))) }
+            else -> listOf(Triple(0, 127, 0))
+        }
         fun gens(z: Triple<Int, Int, Int>) = listOf(
             43 to (z.first or (z.second shl 8)), 34 to tc(p.a), 36 to tc(p.d), 37 to sus, 38 to tc(p.r),
-            48 to Math.round(-p.vol * 10), 52 to p.tune, 54 to (if (p.loop) 1 else 0), 58 to p.root, 53 to z.third,
+            48 to Math.round(-p.vol * 10), 52 to p.tune, 54 to (if (p.loop) 1 else 0), 58 to p.rootFor(sl[z.third]), 53 to z.third,
         )
         val gsz = gens(zones[0]).size
         val igen = zones.flatMap { gens(it) }.map { u16(it.first) + u16(it.second and 0xFFFF) }
@@ -52,8 +56,8 @@ object Sf2 {
             val n = sg.size; val s = sl[i]; val a = st; st += n + 46
             val l1 = (p.ls * n).toInt().coerceIn(0, n - 2)
             val l2 = (p.le * n).toInt().coerceIn(l1 + 1, n)
-            cat(str(if (s != 4) "Vogal_${letter(s)}" else name, 20), u32(a), u32(a + n), u32(a + l1), u32(a + l2),
-                u32(p.rate[s]), byteArrayOf(p.root.toByte(), 0), u16(0), u16(1))
+            cat(str(when { s == 4 -> name; s >= 6 -> "Nota_" + NN[(s - 6) % 12] + ((s - 6) / 12 - 1); else -> "Vogal_${letter(s)}" }, 20), u32(a), u32(a + n), u32(a + l1), u32(a + l2),
+                u32(p.rate[s]), byteArrayOf(p.rootFor(s).toByte(), 0), u16(0), u16(1))
         }
 
         val info = lst("INFO", ck("ifil", u16(2), u16(1)), ck("isng", str("EMU8000", 8)), ck("INAM", str(name, 20)))

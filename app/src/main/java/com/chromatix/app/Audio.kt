@@ -7,6 +7,7 @@ import android.net.Uri
 import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.pow
+import kotlin.math.tanh
 
 class Shorts {
     var a = ShortArray(1 shl 16); var n = 0
@@ -69,11 +70,16 @@ object Engine {
             while (run) {
                 mix.fill(0f)
                 synchronized(vs) { val it = vs.iterator(); while (it.hasNext()) if (!it.next().render(mix)) it.remove() }
-                for (i in mix.indices) out[i] = (mix[i] * Cfg.vol * 32767f).coerceIn(-32767f, 32767f).toInt().toShort()
+                for (i in mix.indices) out[i] = (soft(mix[i] * Cfg.vol) * 32767f).toInt().toShort()
                 t.write(out, 0, 256)
             }
             t.stop(); t.release()
         }.start()
+    }
+
+    private fun soft(x: Float): Float {
+        val a = abs(x)
+        return if (a < .7f) x else (if (x < 0) -1f else 1f) * (.7f + .3f * tanh((a - .7f) / .3f))
     }
 
     fun stop() { run = false; synchronized(vs) { vs.clear() } }
@@ -81,6 +87,7 @@ object Engine {
     /** id identifica a "tecla" (para soltar depois); note define o pitch; slot escolhe o sample/vogal. */
     fun on(id: Int, note: Int, slot: Int) {
         val p = Store.cur ?: return
+        if (slot < 0) return
         val d = p.pcm[slot] ?: return
         start()
         val o = (p.ts[slot] * d.size).toInt()
@@ -90,8 +97,10 @@ object Engine {
             if (vs.any { it.id == id && !it.rel }) return
             val le = minOf(p.le.toDouble() * len, len - 2.0)
             val ls = minOf(p.ls.toDouble() * len, le - 2.0)
-            val step = 2.0.pow((note - p.root) / 12.0 + p.tune / 1200.0) * p.rate[slot] / SR
-            vs.add(Voice(id, d, o, len, step, p.loop && le - ls > 2, ls, le, 10f.pow(p.vol / 20f),
+            val step = 2.0.pow((note - p.rootFor(slot)) / 12.0 + p.tune / 1200.0) * p.rate[slot] / SR
+            // Reforço de graves: celular quase não reproduz notas muito baixas, então sobe o ganho abaixo de G3.
+            val boost = minOf(24.0, Cfg.bass * maxOf(0.0, (55 - note) / 12.0))
+            vs.add(Voice(id, d, o, len, step, p.loop && le - ls > 2, ls, le, 10f.pow(p.vol / 20f) * 10.0.pow(boost / 20.0).toFloat(),
                 1f / maxOf(1f, p.a * SR), (1f - p.s) / maxOf(1f, p.d * SR), p.s, p.r))
         }
     }
@@ -157,4 +166,23 @@ class Rec {
         on = false; t?.join(); ar?.stop(); ar?.release(); ar = null
         return out.a.copyOf(out.n)
     }
+}
+
+/** Toca um trecho de um áudio (usado no editor de corte). */
+object Preview {
+    private var t: AudioTrack? = null
+    fun play(d: ShortArray, a: Int, b: Int, rate: Int) {
+        stop()
+        val n = b - a
+        if (n < 16) return
+        try {
+            val tr = AudioTrack.Builder()
+                .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                .setBufferSizeInBytes(n * 2).setTransferMode(AudioTrack.MODE_STATIC).build()
+            tr.write(d, a, n); tr.play(); t = tr
+        } catch (e: Exception) { t = null }
+    }
+    fun head(): Int = t?.playbackHeadPosition ?: 0
+    fun stop() { t?.let { try { it.stop() } catch (e: Exception) { }; it.release() }; t = null }
 }
