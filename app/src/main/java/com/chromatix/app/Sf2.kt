@@ -7,8 +7,8 @@ import kotlin.math.ln
 import kotlin.math.log10
 
 /**
- * Gera um SoundFont 2.01. Modo vogais: 4 samples (A,E,I,O) e 128 zonas, uma por tecla,
- * tecla k usa a vogal k%4 (repete em todo o teclado). Modo único: 1 sample em todas as teclas.
+ * Gera um SoundFont 2.01. Modo vogais: 4 samples (A,E,I,O, +U se dublado) e 128 zonas, uma por tecla,
+ * tecla k usa a vogal k%N (N=4 ou 5), repetindo em todo o teclado. Modo único: 1 sample em todas as teclas.
  */
 object Sf2 {
     private fun u16(v: Int) = byteArrayOf(v.toByte(), (v shr 8).toByte())
@@ -38,7 +38,7 @@ object Sf2 {
 
         val name = nm(p)
         val sus = if (p.s >= 1f) 0 else minOf(1440, Math.round(-200 * log10(maxOf(p.s, .0001f).toDouble())).toInt())
-        val zones = if (p.vow) (0..127).map { Triple(it, it, it % 4) } else listOf(Triple(0, 127, 0))
+        val zones = if (p.vow) (0..127).map { Triple(it, it, it % sl.size) } else listOf(Triple(0, 127, 0))
         fun gens(z: Triple<Int, Int, Int>) = listOf(
             43 to (z.first or (z.second shl 8)), 34 to tc(p.a), 36 to tc(p.d), 37 to sus, 38 to tc(p.r),
             48 to Math.round(-p.vol * 10), 52 to p.tune, 54 to (if (p.loop) 1 else 0), 58 to p.root, 53 to z.third,
@@ -52,7 +52,7 @@ object Sf2 {
             val n = sg.size; val s = sl[i]; val a = st; st += n + 46
             val l1 = (p.ls * n).toInt().coerceIn(0, n - 2)
             val l2 = (p.le * n).toInt().coerceIn(l1 + 1, n)
-            cat(str(if (s < 4) "Vogal_${VOW[s]}" else name, 20), u32(a), u32(a + n), u32(a + l1), u32(a + l2),
+            cat(str(if (s != 4) "Vogal_${letter(s)}" else name, 20), u32(a), u32(a + n), u32(a + l1), u32(a + l2),
                 u32(p.rate[s]), byteArrayOf(p.root.toByte(), 0), u16(0), u16(1))
         }
 
@@ -63,7 +63,7 @@ object Sf2 {
             ck("pbag", u16(0), u16(0), u16(1), u16(0)),
             ck("pmod", ByteArray(10)),
             ck("pgen", u16(41), u16(0), ByteArray(4)),
-            ck("inst", str(name, 20), u16(0), str("EOI", 20), u16(1)),
+            ck("inst", str(name, 20), u16(0), str("EOI", 20), u16(zones.size)),
             ck("ibag", *ibag.toTypedArray()),
             ck("imod", ByteArray(10)),
             ck("igen", *igen.toTypedArray(), ByteArray(4)),

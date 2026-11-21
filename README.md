@@ -2,7 +2,7 @@
 
 App Android (modo **horizontal**) para criar **Chromatics de FNF** e exportar em **.sf2**.
 
-## Novo na 0.2: dublar vogais (A, E, I, O — sem U)
+## Novo na 0.2: dublar vogais (A, E, I, O — e U opcional)
 1. Crie um projeto (já vem no modo **Vogais**).
 2. Toque em **A**, **E**, **I** ou **O** e **grave** (ou importe) aquela vogal. Cante/fale todas na **mesma nota** e coloque essa nota como *Nota raiz*.
 3. Quando as 4 estiverem dubladas (✓), elas **se repetem no teclado inteiro**: a tecla usa a vogal `nota MIDI % 4`.
@@ -11,7 +11,7 @@ App Android (modo **horizontal**) para criar **Chromatics de FNF** e exportar em
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Vogal | A | E | I | O | A | E | I | O | A | E | I | O |
 
-O padrão é o mesmo em todas as oitavas. As teclas mostram a letra e a cor de cada vogal; teclas de vogais ainda não gravadas ficam cinza e mudas.
+Se você dublar o **U** (opcional), ele entra no ciclo e o teclado passa a repetir **A E I O U** (nota % 5). Sem U, o padrão é o da tabela, igual em todas as oitavas. As teclas mostram a letra e a cor de cada vogal; teclas de vogais ainda não gravadas ficam cinza e mudas.
 No .sf2 isso vira 4 samples e 128 zonas (uma por tecla), então funciona em qualquer player/DAW de SoundFont.
 O modo **Único** (um sample em todas as teclas) continua disponível.
 

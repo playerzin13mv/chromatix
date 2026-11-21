@@ -100,7 +100,7 @@ fun Projects(open: (Proj) -> Unit, export: (Proj) -> Unit) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.Bold)
-                            Text(if (p.vow) "Vogais ${Store.count(p)}/4 · raiz ${nt(p.root)}" else "Sample único · raiz ${nt(p.root)}",
+                            Text(if (p.vow) "Vogais ${Store.count(p)}/4${if (Store.hasU(p)) " +U" else ""} · raiz ${nt(p.root)}" else "Sample único · raiz ${nt(p.root)}",
                                 fontSize = 12.sp, color = Color(0xFF9A93C4))
                         }
                         TextButton({ open(p) }) { Text("Abrir") }
@@ -146,7 +146,8 @@ fun Editor(export: (Proj) -> Unit) {
         Store.setPcm(slot, Audio.norm(d), r)
         val c = Store.cur ?: return
         if (c.vow) {
-            if (c.done && !was) toast(ctx, "Vogais completas! Agora elas se repetem no teclado todo 🎹")
+            if (slot == 5) toast(ctx, "U adicionado! Agora o teclado repete A E I O U")
+            else if (c.done && !was) toast(ctx, "Vogais completas! Elas se repetem no teclado todo 🎹 (o U é opcional)")
             else (0..3).firstOrNull { c.pcm[it] == null }?.let { sel = it }
         }
     }
@@ -170,16 +171,19 @@ fun Editor(export: (Proj) -> Unit) {
             Column(Modifier.weight(1.3f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     val cnt = (0..3).count { p.pcm[it] != null }
-                    Text(p.name + (if (p.vow) " · $cnt/4 vogais" else "") + " ✎", fontWeight = FontWeight.Bold,
+                    Text(p.name + (if (p.vow) " · $cnt/4 vogais" + (if (p.hasU) " +U" else "") else "") + " ✎", fontWeight = FontWeight.Bold,
                         maxLines = 1, modifier = Modifier.weight(1f).clickable { ren = true })
                     Ch("Vogais", p.vow) { Store.edit { it.copy(vow = true) } }
                     Ch("Único", !p.vow) { Store.edit { it.copy(vow = false) } }
                 }
                 Wave(p, sel, Modifier.weight(1f).fillMaxWidth())
                 if (p.vow) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (i in 0..3) Button({ sel = i }, Modifier.weight(1f),
+                    for (i in listOf(0, 1, 2, 3, 5)) Button({ sel = i }, Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = if (sel == i) Violet else Dark),
-                        contentPadding = PaddingValues(0.dp)) { Text("${VOW[i]}" + if (p.pcm[i] != null) " ✓" else "", fontWeight = FontWeight.Bold) }
+                        contentPadding = PaddingValues(0.dp)) {
+                        Text("${letter(i)}" + (if (p.pcm[i] != null) " ✓" else if (i == 5) " (opc.)" else ""),
+                            fontWeight = FontWeight.Bold, fontSize = if (i == 5) 11.sp else 14.sp)
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Btn("📂 Importar") { tgt = sel; pick.launch("audio/*") }
@@ -246,13 +250,13 @@ fun Wave(p: Proj, sel: Int, m: Modifier) {
             drawRect(dim, Offset(p.te[sel] * size.width, 0f), Size(size.width, h))
             if (p.loop) for (f in listOf(p.ls, p.le)) drawRect(Violet, Offset((p.ts[sel] + (p.te[sel] - p.ts[sel]) * f) * size.width, 0f), Size(2f, h))
         }
-        if (d == null) Text(if (p.vow) "Grave ou importe a vogal ${VOW[sel]}" else "Importe ou grave um sample",
+        if (d == null) Text(if (p.vow) "Grave ou importe a vogal ${letter(sel)}" else "Importe ou grave um sample",
             Modifier.align(Alignment.Center), color = Color(0xFF9A93C4))
     }
 }
 
-private val Up = listOf(0xFFF8C8D8, 0xFFFFF0B8, 0xFFC8F0D0, 0xFFC8DCFF).map { Color(it) }   // A E I O
-private val Bk = listOf(0xFF6A2A40, 0xFF6A5A20, 0xFF20603A, 0xFF20406A).map { Color(it) }
+private val Up = listOf(0xFFF8C8D8, 0xFFFFF0B8, 0xFFC8F0D0, 0xFFC8DCFF, 0xFFE4C8F8).map { Color(it) }   // A E I O U
+private val Bk = listOf(0xFF6A2A40, 0xFF6A5A20, 0xFF20603A, 0xFF20406A, 0xFF4A2A6A).map { Color(it) }
 
 @Composable
 fun Piano(p: Proj, mod: Modifier) {
@@ -273,15 +277,16 @@ fun Piano(p: Proj, mod: Modifier) {
 fun Key(m: Int, p: Proj, black: Boolean, mod: Modifier) {
     var down by remember { mutableStateOf(false) }
     val sh = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)
-    val v = m % 4
-    val ok = !p.vow || p.pcm[v] != null
+    val sl = p.slot(m)
+    val v = if (sl == 5) 4 else sl.coerceAtMost(3)
+    val ok = !p.vow || p.pcm[sl] != null
     val bg = when {
         down -> Cyan
         !ok -> if (black) Color(0xFF222222) else Color(0xFF8A8A8A)
         p.vow -> if (black) Bk[v] else Up[v]
         else -> if (black) Color(0xFF111111) else Color(0xFFF2F0FF)
     }
-    val lab = if (p.vow) VOW[v].toString() else if (m % 12 == 0) nt(m) else ""
+    val lab = if (p.vow) letter(sl).toString() else if (m % 12 == 0) nt(m) else ""
     Box(mod.background(bg, sh)
         .then(if (m == p.root) Modifier.border(2.dp, Violet, sh) else Modifier)
         .pointerInput(m) {

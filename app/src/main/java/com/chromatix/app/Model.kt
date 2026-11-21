@@ -15,28 +15,31 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 val NN = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-const val VOW = "AEIO" // sem U, de propósito
+/** Slots: 0..3 = A E I O, 4 = sample único, 5 = U (opcional). */
+fun letter(s: Int) = when (s) { 0 -> 'A'; 1 -> 'E'; 2 -> 'I'; 3 -> 'O'; 5 -> 'U'; else -> '?' }
 
 fun nt(m: Int) = NN[m % 12] + (m / 12 - (if (Cfg.fl) 0 else 1))
 fun <T> List<T>.with(i: Int, v: T): List<T> = toMutableList().also { it[i] = v }
 
-/** Slots 0..3 = vogais A E I O (modo vogais). Slot 4 = sample único. */
 data class Proj(
     val id: Long, val name: String, val vow: Boolean = true,
     val root: Int = 60, val tune: Int = 0,
     val a: Float = .005f, val d: Float = .2f, val s: Float = 1f, val r: Float = .25f,
     val vol: Float = 0f, val loop: Boolean = false, val ls: Float = .3f, val le: Float = .9f,
     val mod: Long = 0,
-    val rate: List<Int> = List(5) { 44100 },
-    val ts: List<Float> = List(5) { 0f },
-    val te: List<Float> = List(5) { 1f },
-    val pcm: List<ShortArray?> = List(5) { null },
+    val rate: List<Int> = List(6) { 44100 },
+    val ts: List<Float> = List(6) { 0f },
+    val te: List<Float> = List(6) { 1f },
+    val pcm: List<ShortArray?> = List(6) { null },
 ) {
-    /** Na vogais, cada tecla usa a vogal (nota % 4): C=A, C#=E, D=I, D#=O, E=A... repete em todo o teclado. */
-    fun slot(m: Int) = if (vow) m % 4 else 4
-    val slots: IntRange get() = if (vow) 0..3 else 4..4
-    val done: Boolean get() = slots.all { pcm[it] != null }
-    fun missing() = slots.filter { pcm[it] == null }.joinToString(", ") { if (it < 4) VOW[it].toString() else "sample" }
+    val hasU: Boolean get() = pcm[5] != null
+    /** Ciclo do teclado: A E I O (e U, se foi dublado). A tecla k usa cycle[k % tamanho]. */
+    val cycle: List<Int> get() = if (hasU) listOf(0, 1, 2, 3, 5) else listOf(0, 1, 2, 3)
+    fun slot(m: Int) = if (vow) cycle[m % cycle.size] else 4
+    val slots: List<Int> get() = if (vow) cycle else listOf(4)
+    private val required: List<Int> get() = if (vow) listOf(0, 1, 2, 3) else listOf(4)
+    val done: Boolean get() = required.all { pcm[it] != null }
+    fun missing() = required.filter { pcm[it] == null }.joinToString(", ") { if (it == 4) "sample" else letter(it).toString() }
 }
 
 object Cfg {
@@ -70,8 +73,9 @@ object Store {
         list.clear(); list.addAll(l)
     }
 
-    fun count(p: Proj) = p.slots.count { File(dir, "${p.id}_$it.pcm").exists() }
-    fun full(p: Proj) = p.copy(pcm = List(5) { loadPcm(p.id, it) })
+    fun count(p: Proj) = (0..3).count { File(dir, "${p.id}_$it.pcm").exists() }
+    fun hasU(p: Proj) = File(dir, "${p.id}_5.pcm").exists()
+    fun full(p: Proj) = p.copy(pcm = List(6) { loadPcm(p.id, it) })
     fun open(p: Proj) { cur = full(p) }
 
     fun create(name: String): Proj {
@@ -95,13 +99,13 @@ object Store {
     fun duplicate(p: Proj) {
         val id = System.currentTimeMillis()
         writeMeta(p.copy(id = id, name = p.name + " (cópia)"))
-        for (i in 0..4) { val f = File(dir, "${p.id}_$i.pcm"); if (f.exists()) f.copyTo(File(dir, "${id}_$i.pcm")) }
+        for (i in 0..5) { val f = File(dir, "${p.id}_$i.pcm"); if (f.exists()) f.copyTo(File(dir, "${id}_$i.pcm")) }
         refresh()
     }
 
     fun delete(p: Proj) {
         File(dir, "${p.id}.json").delete()
-        for (i in 0..4) File(dir, "${p.id}_$i.pcm").delete()
+        for (i in 0..5) File(dir, "${p.id}_$i.pcm").delete()
         if (cur?.id == p.id) cur = null
         refresh()
     }
@@ -130,7 +134,7 @@ object Store {
     private fun parse(j: JSONObject): Proj {
         fun f(k: String, d: Double) = j.optDouble(k, d).toFloat()
         fun <T> arr(k: String, d: T, g: (JSONArray, Int) -> T): List<T> =
-            List(5) { i -> val a = j.optJSONArray(k); if (a != null && i < a.length()) g(a, i) else d }
+            List(6) { i -> val a = j.optJSONArray(k); if (a != null && i < a.length()) g(a, i) else d }
         return Proj(
             j.getLong("id"), j.getString("name"), j.optBoolean("vow", true), j.optInt("root", 60), j.optInt("tune"),
             f("a", .005), f("d", .2), f("s", 1.0), f("r", .25), f("vol", 0.0), j.optBoolean("loop"), f("ls", .3), f("le", .9),
